@@ -1,6 +1,10 @@
 # localcoder
 
-`localcoder` is a small npm wrapper for the LocalCoder install script.
+`localcoder` npm package only provides an installation entry.
+
+The full LocalCoder implementation is built in Rust (Claude Code simulator) and maintained in:
+
+- https://github.com/iamwjun/localcoder
 
 ## Usage
 
@@ -16,7 +20,7 @@ This command executes:
 curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh | bash
 ```
 
-## What It Does
+## What This npm Package Does
 
 When `npx localcoder` runs, the package entry script in [bin/cli.js](/Users/wujun/Github/slotjs/localcoder/bin/cli.js) starts a shell and forwards execution to the remote installer hosted in this repository.
 
