@@ -1,6 +1,6 @@
 {
   "name": "localcoder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "local rust coder claude",
   "main": "index.js",
   "files": [
