@@ -101,9 +101,35 @@ The default config format is:
 
 ```json
 {
-  "ollama": {
-    "url": "http://localhost:11434",
+  "llm": {
+    "type": "ollama",
+    "base_url": "http://localhost:11434",
     "model": "qwen3.5:4b"
+  }
+}
+```
+
+`llm.type` selects the provider: `ollama`, `lmstudio`, or `openai`.
+
+```json
+{
+  "llm": {
+    "type": "lmstudio",
+    "base_url": "http://localhost:1234",
+    "model": "qwen/qwen3-coder-30b"
+  }
+}
+```
+
+For OpenAI-compatible services:
+
+```json
+{
+  "llm": {
+    "type": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-...",
+    "model": "gpt-4o-mini"
   }
 }
 ```
@@ -229,9 +255,8 @@ localcoder/
 | HTTP client | reqwest 0.12 |
 | JSON handling | serde + serde_json 1.0 |
 | Line editing | rustyline 14.0 |
-| Error handling | anyhow + thiserror |
-| Terminal colors | colored 2.1 |
-| Streaming utilities | futures 0.3 |
+| Error handling | anyhow |
+| Terminal colors | oxink 0.1.1 |
 
 ---
 
