@@ -53,7 +53,13 @@ The staged roadmap in [`docs/P00-plan.md`](./docs/P00-plan.md) is mostly impleme
 
 ### 1. Install the Binary
 
-**Option 1: Use the install script**
+**Option 1: Use npx install**
+
+```bash
+npx localcoder
+```
+
+**Option 2: Use the install script**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh | bash
@@ -63,7 +69,7 @@ Supported platforms:
 - macOS (arm64 / x86_64)
 - Linux (x86_64 / aarch64)
 
-**Option 2: Build from source**
+**Option 3: Build from source**
 
 ```bash
 git clone https://github.com/iamwjun/localcoder.git
