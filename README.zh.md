@@ -1,16 +1,17 @@
 # Localcoder
 
-> 说明：本仓库在开发过程中使用了 Claude Code 和 Codex。如果这让你感到不适，抱歉。
+![Localcoder REPL screenshot](./docs/example.png)
 
 英文版：[README.md](./README.md)
 
 ## 📖 简介
 
-Localcoder 是一个基于 Rust 实现的 Claude-like 命令行 AI 助手，当前实现已经包括：
+Localcoder 是一个基于 Rust 实现、以本地优先为主的命令行编码助手，当前已经包括：
 
-- ✅ 基于 Ollama 的对话、流式响应和单次查询模式
+- ✅ 面向 Ollama、OpenAI 兼容接口和 LM Studio 的流式对话与单次查询
 - ✅ 文件、搜索、Bash、Web、LSP 等工具调用运行时
-- ✅ 带模型切换、会话恢复、配置菜单和输出风格的交互式 REPL
+- ✅ 基于 `oxink` 输入组件的交互式 REPL，支持模型切换、会话恢复、配置菜单和输出风格
+- ✅ 本地 Server 模式，支持 HTTP 和 WebSocket 入口
 - ✅ 上下文压缩、Git 工作流、记忆提取、计划模式和技能系统
 - ✅ 轻量级（启动快、内存占用低）
 
@@ -20,7 +21,7 @@ Localcoder 是一个基于 Rust 实现的 Claude-like 命令行 AI 助手，当�
 
 ## 📊 实现状态
 
-[`docs/P00-plan.md`](./docs/P00-plan.md) 中的阶段路线图大部分已经落地。当前进度：**20 个阶段中已完成 15 个**。
+[`docs/P00-plan.md`](./docs/P00-plan.md) 中的阶段路线图大部分已经落地。当前进度：**22 个阶段中已完成 17 个**。
 
 | 阶段 | 模块 | 状态 | 核心交付物 |
 |------|------|------|------|
@@ -44,6 +45,8 @@ Localcoder 是一个基于 Rust 实现的 Claude-like 命令行 AI 助手，当�
 | S17 | MCP 集成 | ❌ | MCP 客户端和多传输支持尚未实现 |
 | S18 | 输出样式 | ✅ | 输出样式加载和 `/output-style` |
 | S19 | LSP 集成 | ✅ | 基于语言服务器的代码导航 `Lsp` |
+| S20 | Server 模式 | ✅ | 基于 Axum 的本地 HTTP / WebSocket 服务与 `/server` |
+| S21 | REPL 斜杠命令面板 | ✅ | 内建命令与技能命令的斜杠候选提示和选择面板 |
 
 ---
 
@@ -51,13 +54,7 @@ Localcoder 是一个基于 Rust 实现的 Claude-like 命令行 AI 助手，当�
 
 ### 1. 安装二进制
 
-**方法一：使用npx**
-
-```bash
-npx localcoder
-```
-
-**方法二：使用官方安装脚本**
+**方法一：使用官方安装脚本**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh | bash
@@ -67,7 +64,7 @@ curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh 
 - macOS (arm64 / x86_64)
 - Linux (x86_64 / aarch64)
 
-**方法三：手动编译**
+**方法二：手动编译**
 
 ```bash
 git clone https://github.com/iamwjun/localcoder.git
@@ -77,9 +74,73 @@ cargo build --release
 
 ---
 
-### 2. 启动 Ollama
+### 2. 配置 Provider
 
-确保本地 Ollama 服务已经启动，并且至少拉取了一个模型：
+首次启动时，Localcoder 会确保 `$HOME/.localcoder/settings.json` 存在。
+
+LLM 配置从这个 home 级配置文件读取。示例：
+
+**Ollama**
+
+```json
+{
+  "llm": {
+    "type": "ollama",
+    "base_url": "http://localhost:11434",
+    "model": "qwen3.5:4b"
+  }
+}
+```
+
+**LM Studio**
+
+```json
+{
+  "llm": {
+    "type": "lmstudio",
+    "base_url": "http://localhost:1234",
+    "model": "qwen/qwen3-coder-30b"
+  }
+}
+```
+
+**OpenAI 兼容服务**
+
+```json
+{
+  "llm": {
+    "type": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-...",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+项目内也可以放 `.localcoder/settings.json` 做局部覆盖。当前这一路径尤其适合放 `ui` 和 `lsp` 配置：
+
+```json
+{
+  "ui": {
+    "theme": "default",
+    "tips": true,
+    "output_style": "default"
+  },
+  "lsp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "rust-analyzer",
+        "command": "rust-analyzer",
+        "extensions": [".rs"],
+        "language_id": "rust"
+      }
+    ]
+  }
+}
+```
+
+如果你使用 Ollama，请确保本地服务已经启动，并且至少拉取了一个模型：
 
 ```bash
 ollama serve
@@ -95,24 +156,9 @@ ollama pull qwen3.5:4b
 localcoder
 ```
 
-程序启动时会自动检查配置文件：
+启动时，REPL 会显示一个紧凑的 banner，包含会话状态、UI 状态和当前 endpoint。启用 tips 时，还会随机显示一条启动提示；当前激活的 `llm` / `model` 会显示在输入框下方。
 
-- 优先读取当前目录的 `.localcoder/settings.json`
-- 如果当前目录没有，则读取 `$HOME/.localcoder/settings.json`
-- 如果两处都没有，则在当前目录自动创建默认配置
-
-默认配置格式如下：
-
-```json
-{
-  "ollama": {
-    "url": "http://localhost:11434",
-    "model": "qwen3.5:4b"
-  }
-}
-```
-
-你也可以手动编辑这个文件，或在 REPL 中使用 `/model` 指令切换模型。
+你可以手动编辑 `$HOME/.localcoder/settings.json`，也可以在 REPL 中使用 `/model` 切换模型。
 
 ---
 
@@ -130,7 +176,83 @@ localcoder --continue
 
 # 恢复指定会话
 localcoder --resume s1712345678-12345
+
+# 前台启动本地服务
+localcoder -- "/server"
+
+# 使用自定义地址启动本地服务
+localcoder -- "/server 127.0.0.1:4000"
 ```
+
+一些有用的交互细节：
+
+- `Ctrl-C`、`Ctrl-D`、`/exit`、`/quit` 都可以退出主 REPL
+- `/resume` 会打开会话选择器，并重新渲染已加载的历史对话
+- `/config` 用来管理主题和启动提示开关
+- `/output-style` 可以切换当前回复风格，而不用手改 JSON
+
+---
+
+## 🌐 Server 模式
+
+Localcoder 也可以作为本地 HTTP / WebSocket 服务运行。默认监听地址为 `127.0.0.1:3000`。
+
+可以通过两种方式启动：
+
+```bash
+# 在 REPL 中后台启动，同时继续使用 REPL
+/server
+/server status
+/server stop
+
+# 在 one-shot 模式下前台运行
+localcoder -- "/server"
+localcoder -- "/server 127.0.0.1:4000"
+```
+
+当前可用路由：
+
+- `GET /healthz`
+- `POST /v1/message`
+- `GET /v1/ws`
+
+HTTP 请求示例：
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/message \
+  -H "content-type: application/json" \
+  -d '{
+    "message": "解释一下 src/main.rs 的职责",
+    "session_id": "",
+    "output_style": "default"
+  }'
+```
+
+响应示例：
+
+```json
+{
+  "session_id": "s1746690000000-12345-0",
+  "reply": "src/main.rs 负责初始化配置、注册工具，并决定进入 REPL 还是 one-shot 执行流程。",
+  "model": "qwen3.5:4b"
+}
+```
+
+WebSocket 消息同样使用 JSON；当前一条请求对应一次完整 agent 执行：
+
+```json
+{
+  "type": "message",
+  "message": "继续上一轮，并总结一下 main.rs",
+  "session_id": "s1746690000000-12345-0"
+}
+```
+
+当前服务模式的定位是本地优先：
+
+- 默认只监听 `127.0.0.1`
+- 暂时没有内建认证和 TLS
+- 如果需要 `wss`，建议通过反向代理处理
 
 ---
 
@@ -169,6 +291,7 @@ localcoder -- "抓取 https://www.rust-lang.org/"
 | `/output-style [name]` | 列出或切换输出风格 |
 | `/web <query>` | 直接搜索公网内容 |
 | `/fetch <url>` | 抓取公开网页 |
+| `/server [status\|stop\|host:port]` | 启动、停止或查看本地 HTTP / WebSocket 服务 |
 | `/plan` | 查看计划模式状态 |
 | `/plan on` | 手动启用计划模式 |
 | `/plan off` | 手动关闭计划模式 |
@@ -179,7 +302,7 @@ localcoder -- "抓取 https://www.rust-lang.org/"
 | `/help` | 显示可用命令列表 |
 | `/clear` | 清空对话历史 |
 | `/history` | 查看对话历史（JSON 格式） |
-| `/model` | 从 `/api/tags` 获取模型列表并切换当前模型，同时更新 `$HOME/.localcoder/settings.json` |
+| `/model` | 从当前 provider 的模型接口获取列表并切换当前模型，同时更新 `$HOME/.localcoder/settings.json` |
 | `/count` | 显示消息数量 |
 | `/version` | 显示当前版本 |
 | `/quit` | 退出 REPL |
@@ -198,7 +321,7 @@ localcoder/
 ├── README.zh.md         # 中文说明
 ├── docs/                # 路线图与分阶段实现文档
 │   ├── P00-plan.md      # 总体阶段计划
-│   └── S00-S19*.md      # 各阶段详细说明
+│   └── S00-S21*.md      # 各阶段详细说明
 ├── examples/            # 示例代码
 │   ├── basic.rs          # 基本 API 调用
 │   ├── streaming.rs      # 流式响应
@@ -207,7 +330,7 @@ localcoder/
 │   └── error_handling.rs # 错误处理
 └── src/                 # 源代码
     ├── main.rs           # 程序入口
-    ├── api.rs            # Ollama 客户端与流式请求
+    ├── api.rs            # 多 provider 客户端与流式请求
     ├── compact.rs        # 上下文压缩
     ├── config.rs         # REPL/UI 配置加载与持久化
     ├── engine.rs         # Agent 循环与工具分发
@@ -216,6 +339,8 @@ localcoder/
     ├── output_style.rs   # 输出风格加载与 prompt 注入
     ├── plan.rs           # 计划模式状态与 todo 管理
     ├── repl.rs           # 交互式 REPL
+    ├── runtime.rs        # 共享运行时与启动辅助
+    ├── server.rs         # 本地 HTTP / WebSocket 服务模式
     ├── session.rs        # JSONL 会话持久化
     ├── skills.rs         # SKILL.md 加载与激活
     ├── tools/            # 内置工具
@@ -231,10 +356,11 @@ localcoder/
 |------|----------|
 | 异步运行时 | tokio 1.40 |
 | HTTP 客户端 | reqwest 0.12 |
+| 本地服务 | axum 0.8 |
 | JSON 处理 | serde + serde_json 1.0 |
-| 命令行编辑 | rustyline 14.0 |
+| Prompt / 输入 UI | oxink 0.1.5 |
 | 错误处理 | anyhow |
-| 终端彩色 | colored 2.1 |
+| 语言工具 | 内置 LSP manager + 外部语言服务器 |
 
 ---
 
@@ -255,8 +381,8 @@ localcoder/
 1. **Rust 异步编程** - tokio 运行时、async/await、Stream 处理
 2. **HTTP 客户端** - reqwest、JSON API 调用
 3. **系统编程** - 错误处理、所有权、类型安全
-4. **CLI 开发** - rustyline REPL、命令行参数
-5. **Ollama 集成** - `/api/chat`、`/api/tags`、模型配置管理
+4. **CLI 开发** - 终端交互体验、prompt 渲染、命令行工作流
+5. **Provider 集成** - Ollama、OpenAI 兼容接口、LM Studio 的模型管理
 
 ---
 

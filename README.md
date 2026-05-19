@@ -1,18 +1,17 @@
 # Localcoder
 
-> Note: This repository is developed with the help of Claude Code and Codex. If that makes you uncomfortable, apologies.
-
-> Note: code repository url: https://github.com/iamwjun/localcoder.
+![Localcoder REPL screenshot](./docs/example.png)
 
 Chinese version: [README.zh.md](./README.zh.md)
 
 ## 📖 Overview
 
-Localcoder is a Claude-like command-line AI assistant implemented in Rust. The current implementation already includes:
+Localcoder is a local-first command-line coding assistant implemented in Rust. It already includes:
 
-- ✅ Ollama-backed chat with streaming responses and one-shot mode
+- ✅ Streaming chat and one-shot execution for Ollama, OpenAI-compatible APIs, and LM Studio
 - ✅ Tool calling runtime with file, search, Bash, web, and LSP tools
-- ✅ Interactive REPL with model switching, session resume, config UI, and output styles
+- ✅ Interactive REPL with `oxink` input, model switching, session resume, config UI, and output styles
+- ✅ Local server mode with HTTP and WebSocket entrypoints
 - ✅ Context compaction, git workflows, memory extraction, plan mode, and skills
 - ✅ Lightweight runtime with fast startup and low memory usage
 
@@ -22,7 +21,7 @@ Localcoder is a Claude-like command-line AI assistant implemented in Rust. The c
 
 ## 📊 Implementation Status
 
-The staged roadmap in [`docs/P00-plan.md`](./docs/P00-plan.md) is mostly implemented. Current status: **15 / 20 stages completed**.
+The staged roadmap in [`docs/P00-plan.md`](./docs/P00-plan.md) is mostly implemented. Current status: **17 / 22 stages completed**.
 
 | Stage | Area | Status | Deliverable |
 |------|------|------|------|
@@ -46,6 +45,8 @@ The staged roadmap in [`docs/P00-plan.md`](./docs/P00-plan.md) is mostly impleme
 | S17 | MCP integration | ❌ | MCP client and transport support are not implemented yet |
 | S18 | Output styles | ✅ | Output style loading and `/output-style` |
 | S19 | LSP integration | ✅ | Language-server-backed code navigation via `Lsp` |
+| S20 | Server mode | ✅ | Axum-based local HTTP and WebSocket server via `/server` |
+| S21 | REPL slash menu | ✅ | Slash command suggestions and picker for built-in and skill commands |
 
 ---
 
@@ -53,13 +54,7 @@ The staged roadmap in [`docs/P00-plan.md`](./docs/P00-plan.md) is mostly impleme
 
 ### 1. Install the Binary
 
-**Option 1: Use npx install**
-
-```bash
-npx localcoder
-```
-
-**Option 2: Use the install script**
+**Option 1: Use the install script**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh | bash
@@ -69,7 +64,7 @@ Supported platforms:
 - macOS (arm64 / x86_64)
 - Linux (x86_64 / aarch64)
 
-**Option 3: Build from source**
+**Option 2: Build from source**
 
 ```bash
 git clone https://github.com/iamwjun/localcoder.git
@@ -79,9 +74,73 @@ cargo build --release
 
 ---
 
-### 2. Start Ollama
+### 2. Configure a Provider
 
-Make sure your local Ollama service is running and that at least one model has been pulled:
+On first launch, Localcoder ensures that `$HOME/.localcoder/settings.json` exists.
+
+LLM settings are loaded from that home-level file. Example configurations:
+
+**Ollama**
+
+```json
+{
+  "llm": {
+    "type": "ollama",
+    "base_url": "http://localhost:11434",
+    "model": "qwen3.5:4b"
+  }
+}
+```
+
+**LM Studio**
+
+```json
+{
+  "llm": {
+    "type": "lmstudio",
+    "base_url": "http://localhost:1234",
+    "model": "qwen/qwen3-coder-30b"
+  }
+}
+```
+
+**OpenAI-compatible**
+
+```json
+{
+  "llm": {
+    "type": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-...",
+    "model": "gpt-4o-mini"
+  }
+}
+```
+
+Optional project-local overrides can live in `.localcoder/settings.json`. Today that path is especially useful for UI and LSP settings:
+
+```json
+{
+  "ui": {
+    "theme": "default",
+    "tips": true,
+    "output_style": "default"
+  },
+  "lsp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "rust-analyzer",
+        "command": "rust-analyzer",
+        "extensions": [".rs"],
+        "language_id": "rust"
+      }
+    ]
+  }
+}
+```
+
+If you use Ollama, make sure the local service is running and that at least one model has been pulled:
 
 ```bash
 ollama serve
@@ -97,50 +156,9 @@ ollama pull qwen3.5:4b
 localcoder
 ```
 
-On startup, Localcoder automatically checks for a settings file:
+On startup the REPL shows a compact banner with session status, UI state, and active endpoint. When tips are enabled it also prints one random startup tip, and the active `llm` / `model` is rendered below the input box.
 
-- It first looks for `.localcoder/settings.json` in the current directory
-- If that file does not exist, it falls back to `$HOME/.localcoder/settings.json`
-- If neither exists, it creates a default config in the current directory
-
-The default config format is:
-
-```json
-{
-  "llm": {
-    "type": "ollama",
-    "base_url": "http://localhost:11434",
-    "model": "qwen3.5:4b"
-  }
-}
-```
-
-`llm.type` selects the provider: `ollama`, `lmstudio`, or `openai`.
-
-```json
-{
-  "llm": {
-    "type": "lmstudio",
-    "base_url": "http://localhost:1234",
-    "model": "qwen/qwen3-coder-30b"
-  }
-}
-```
-
-For OpenAI-compatible services:
-
-```json
-{
-  "llm": {
-    "type": "openai",
-    "base_url": "https://api.openai.com/v1",
-    "api_key": "sk-...",
-    "model": "gpt-4o-mini"
-  }
-}
-```
-
-You can edit this file manually, or switch models from the REPL with the `/model` command.
+You can edit `$HOME/.localcoder/settings.json` manually, or switch models from the REPL with `/model`.
 
 ---
 
@@ -158,7 +176,83 @@ localcoder --continue
 
 # Resume a specific session
 localcoder --resume s1712345678-12345
+
+# Start the local server in the foreground
+localcoder -- "/server"
+
+# Start the local server on a custom address
+localcoder -- "/server 127.0.0.1:4000"
 ```
+
+Useful interaction details:
+
+- `Ctrl-C`, `Ctrl-D`, `/exit`, and `/quit` all leave the main REPL
+- `/resume` opens a session picker and re-renders the loaded conversation history
+- `/config` manages theme and startup tip visibility
+- `/output-style` switches the active response style without editing JSON by hand
+
+---
+
+## 🌐 Server Mode
+
+Localcoder can also run as a local HTTP and WebSocket server. The default bind address is `127.0.0.1:3000`.
+
+You can start it in either mode:
+
+```bash
+# Start in the REPL, but keep the REPL usable
+/server
+/server status
+/server stop
+
+# Start in one-shot mode and keep the process in the foreground
+localcoder -- "/server"
+localcoder -- "/server 127.0.0.1:4000"
+```
+
+Available routes:
+
+- `GET /healthz`
+- `POST /v1/message`
+- `GET /v1/ws`
+
+Example HTTP request:
+
+```bash
+curl -X POST http://127.0.0.1:3000/v1/message \
+  -H "content-type: application/json" \
+  -d '{
+    "message": "Explain the role of src/main.rs",
+    "session_id": "",
+    "output_style": "default"
+  }'
+```
+
+Example response:
+
+```json
+{
+  "session_id": "s1746690000000-12345-0",
+  "reply": "src/main.rs bootstraps configuration, registers tools, and decides between REPL and one-shot execution.",
+  "model": "qwen3.5:4b"
+}
+```
+
+WebSocket messages are JSON-based and currently one request maps to one full agent execution:
+
+```json
+{
+  "type": "message",
+  "message": "Continue the previous turn and summarize main.rs",
+  "session_id": "s1746690000000-12345-0"
+}
+```
+
+The server is intentionally local-first:
+
+- It listens on `127.0.0.1` by default
+- There is no built-in auth or TLS yet
+- `wss` should be handled by a reverse proxy if needed
 
 ---
 
@@ -197,6 +291,7 @@ localcoder -- "Fetch https://www.rust-lang.org/"
 | `/output-style [name]` | List or switch output styles |
 | `/web <query>` | Search the public web directly |
 | `/fetch <url>` | Fetch a public web page |
+| `/server [status\|stop\|host:port]` | Start, stop, or inspect the local HTTP/WebSocket server |
 | `/plan` | Show plan-mode status |
 | `/plan on` | Enable plan mode manually |
 | `/plan off` | Disable plan mode manually |
@@ -207,7 +302,7 @@ localcoder -- "Fetch https://www.rust-lang.org/"
 | `/help` | Show the available commands |
 | `/clear` | Clear conversation history |
 | `/history` | Show conversation history in JSON format |
-| `/model` | Fetch models from `/api/tags`, switch the active model, and update `$HOME/.localcoder/settings.json` |
+| `/model` | Fetch models from the active provider endpoint, switch the active model, and update `$HOME/.localcoder/settings.json` |
 | `/count` | Show the message count |
 | `/version` | Show the current version |
 | `/quit` | Exit the REPL |
@@ -226,7 +321,7 @@ localcoder/
 ├── README.zh.md         # Chinese documentation
 ├── docs/                # Roadmap and stage-by-stage implementation notes
 │   ├── P00-plan.md      # Overall staged plan
-│   └── S00-S19*.md      # Detailed stage documents
+│   └── S00-S21*.md      # Detailed stage documents
 ├── examples/            # Example programs
 │   ├── basic.rs          # Basic API usage
 │   ├── streaming.rs      # Streaming responses
@@ -235,7 +330,7 @@ localcoder/
 │   └── error_handling.rs # Error handling
 └── src/                 # Source code
     ├── main.rs           # Program entry point
-    ├── api.rs            # Ollama client and streaming requests
+    ├── api.rs            # Provider clients and streaming requests
     ├── compact.rs        # Context compaction
     ├── config.rs         # REPL/UI config loading and persistence
     ├── engine.rs         # Agent loop and tool dispatch
@@ -244,6 +339,8 @@ localcoder/
     ├── output_style.rs   # Output style loading and prompt injection
     ├── plan.rs           # Plan mode state and todo management
     ├── repl.rs           # Interactive REPL interface
+    ├── runtime.rs        # Shared runtime/bootstrap helpers
+    ├── server.rs         # Local HTTP and WebSocket server mode
     ├── session.rs        # JSONL session persistence
     ├── skills.rs         # SKILL.md loading and activation
     ├── tools/            # Built-in tools
@@ -259,10 +356,11 @@ localcoder/
 |------|----------|
 | Async runtime | tokio 1.40 |
 | HTTP client | reqwest 0.12 |
+| Local server | axum 0.8 |
 | JSON handling | serde + serde_json 1.0 |
-| Line editing | rustyline 14.0 |
+| Prompt/input UI | oxink 0.1.5 |
 | Error handling | anyhow |
-| Terminal colors | oxink 0.1.1 |
+| Language tooling | built-in LSP manager + external language servers |
 
 ---
 
@@ -283,8 +381,8 @@ This project is useful for learning:
 1. **Async Rust**: tokio, async/await, and stream handling
 2. **HTTP clients**: reqwest and JSON-based APIs
 3. **Systems programming**: error handling, ownership, and type safety
-4. **CLI development**: rustyline REPL and command-line workflows
-5. **Ollama integration**: `/api/chat`, `/api/tags`, and model configuration management
+4. **CLI development**: terminal UX, prompt rendering, and command-line workflows
+5. **Provider integration**: Ollama, OpenAI-compatible APIs, and LM Studio model management
 
 ---
 
