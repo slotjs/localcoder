@@ -54,7 +54,13 @@ Localcoder 是一个基于 Rust 实现、以本地优先为主的命令行编码
 
 ### 1. 安装二进制
 
-**方法一：使用官方安装脚本**
+**方法一：使用 npx**
+
+```bash
+npx localcoder
+```
+
+**方法二：使用官方安装脚本**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh | bash
@@ -64,7 +70,7 @@ curl -fsSL https://raw.githubusercontent.com/iamwjun/localcoder/main/install.sh 
 - macOS (arm64 / x86_64)
 - Linux (x86_64 / aarch64)
 
-**方法二：手动编译**
+**方法三：手动编译**
 
 ```bash
 git clone https://github.com/iamwjun/localcoder.git
